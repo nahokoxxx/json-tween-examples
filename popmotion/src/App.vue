@@ -1,29 +1,67 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from "vue";
-import dataList from "../data.json";
+import dataList from "../pickle_5.json";
 import { animate } from "popmotion";
 
+type Index = keyof typeof dataList;
+type Car = {
+  car_type: number;
+  car_pos: number[];
+  car_angle: number;
+  car_length: number;
+};
+
+const initialIndex = Object.keys(dataList)[0] as Index;
+
 const canvasRef = ref<HTMLCanvasElement | null>(null);
-const currentIndex = ref(0);
+const currentIndex = ref(initialIndex);
 const playingIntervalId = ref<number | null>(null);
 
-watch(currentIndex, (value, oldValue) => {
-  const data = { ...dataList[value] };
-  const previousData = { ...dataList[oldValue] };
+let drawnCars: { [id: string]: Car } = dataList[initialIndex];
 
-  animate({
-    from: previousData,
-    to: data,
-    duration: 1000,
-    onUpdate: (updatedData: { x: number; y: number }) => {
-      drawRect(updatedData);
-    },
+watch(currentIndex, (value, oldValue) => {
+  const data: { [id: string]: Car } = { ...dataList[value] };
+  const previousData: { [id: string]: Car } = { ...dataList[oldValue] };
+
+  const carIds = Object.keys(data);
+  // carIdsにインデックスが含まれない場合は描画対象から除外する
+  drawnCars = Object.keys(drawnCars).reduce((acc, id) => {
+    if (carIds.includes(id)) {
+      acc[id] = drawnCars[id];
+    }
+    return acc;
+  }, {} as { [id: string]: Car });
+
+  carIds.forEach((id) => {
+    const carData = data[id];
+    const previousCarData = previousData[id];
+
+    if (previousCarData) {
+      animate({
+        from: { x: previousCarData.car_pos[0], y: previousCarData.car_pos[1] },
+        to: { x: carData.car_pos[0], y: carData.car_pos[1] },
+        duration: 1000,
+        onUpdate: (updatedData: { x: number; y: number }) => {
+          drawnCars[id] = {
+            ...carData,
+            car_pos: [updatedData.x, updatedData.y],
+          };
+        },
+      });
+    } else {
+      drawnCars[id] = carData;
+    }
   });
 });
 
 onMounted(() => {
-  drawRect(dataList[0]);
+  requestAnimationFrame(animateDraw);
 });
+
+function animateDraw() {
+  draw();
+  requestAnimationFrame(animateDraw);
+}
 
 function getCanvas2dContext() {
   if (canvasRef.value === null) {
@@ -32,18 +70,23 @@ function getCanvas2dContext() {
   return canvasRef.value.getContext("2d") as CanvasRenderingContext2D;
 }
 
-function drawRect(data: { x: number; y: number }) {
+function draw() {
   const ctx = getCanvas2dContext();
   ctx.clearRect(0, 0, 460, 480);
-  ctx.fillStyle = "red";
-  ctx.fillRect(data.x, data.y, 100, 100);
+
+  Object.values(drawnCars).forEach((car) => {
+    ctx.fillStyle = "blue";
+    ctx.fillRect(car.car_pos[0], car.car_pos[1], 10, 10);
+  });
 }
 
 function play() {
   playingIntervalId.value = setInterval(() => {
-    currentIndex.value++;
+    const numberCurrentIndex = Number(currentIndex.value);
+    const nextIndex = (numberCurrentIndex + 1).toString() as Index;
+    currentIndex.value = nextIndex;
     if (
-      currentIndex.value >= dataList.length - 1 &&
+      nextIndex === Object.keys(dataList)[Object.keys(dataList).length] &&
       playingIntervalId.value !== null
     ) {
       clearInterval(playingIntervalId.value);
@@ -58,7 +101,7 @@ function stop() {
   }
 }
 
-function seek(index: number) {
+function seek(index: Index) {
   stop();
   currentIndex.value = index;
 }
